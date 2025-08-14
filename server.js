@@ -27,7 +27,8 @@ if (!fs.existsSync(usersDBPath)) {
   const defaultAdmin = {
     id: 1,
     username: 'admin',
-    password: bcrypt.hashSync('admin123', 10)
+    password: bcrypt.hashSync('admin123', 10),
+    createdAt: new Date().toISOString()
   };
   fs.writeFileSync(usersDBPath, JSON.stringify([defaultAdmin], null, 2));
   console.log('Created users database with default admin: admin/admin123');
@@ -143,7 +144,8 @@ app.post('/register', (req, res) => {
   const newUser = {
     id: users.length + 1,
     username,
-    password: bcrypt.hashSync(password, 10)
+    password: bcrypt.hashSync(password, 10),
+    createdAt: new Date().toISOString() // Added createdAt timestamp
   };
   
   users.push(newUser);
@@ -155,7 +157,33 @@ app.post('/register', (req, res) => {
 });
 
 app.get('/dashboard', requireLogin, (req, res) => {
-  res.render('dashboard.html', { username: req.session.username });
+  const users = getUsers();
+  const files = getFiles();
+  const user = users.find(u => u.id === req.session.userId);
+  
+  // Calculate storage usage
+  let totalSize = 0;
+  files.forEach(file => {
+    try {
+      const stats = fs.statSync(path.join(uploadsPath, file));
+      totalSize += stats.size;
+    } catch (err) {
+      console.error(`Error getting stats for file ${file}:`, err);
+    }
+  });
+
+  res.render('dashboard.html', { 
+    username: req.session.username,
+    userSince: new Date(user.createdAt).toLocaleDateString(),
+    fileCount: files.length,
+    totalSize: (totalSize / (1024 * 1024)).toFixed(2), // in MB
+    recentFiles: files.slice(-5).reverse().map(file => ({
+      name: file,
+      url: `/uploads/${file}`,
+      size: (fs.statSync(path.join(uploadsPath, file)).size / 1024).toFixed(2) + ' KB'
+    })),
+    userCount: users.length
+  });
 });
 
 app.get('/files', requireLogin, (req, res) => {
